@@ -23,7 +23,9 @@ extern unsigned int __bss_end;
 #define VIRT64_SBI_MEMSZ (0x200000)
 
 #define RT_HW_HEAP_BEGIN ((void *)&__bss_end)
-#define RT_HW_HEAP_END   ((void *)(RT_HW_HEAP_BEGIN + 64 * 1024 * 1024))
+//reduced for faster boot --xyl
+//#define RT_HW_HEAP_END   ((void *)(RT_HW_HEAP_BEGIN + 64 * 1024 * 1024))
+#define RT_HW_HEAP_END   ((void *)(RT_HW_HEAP_BEGIN + 1 * 1024 * 1024))
 #define RT_HW_PAGE_START RT_HW_HEAP_END
 #define RT_HW_PAGE_END   ((void *)(KERNEL_VADDR_START + (128 * 1024 * 1024 - VIRT64_SBI_MEMSZ)))
 

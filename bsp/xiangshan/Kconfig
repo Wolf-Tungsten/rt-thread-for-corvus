@@ -18,7 +18,6 @@ config BOARD_XIANGSHAN
     select RT_USING_USER_MAIN
     select RT_USING_CACHE
     select ARCH_MM_MMU
-    select ARCH_REMAP_KERNEL
     default y
 
 config ENABLE_FPU
