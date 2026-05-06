@@ -13,9 +13,11 @@
 
 头文件还提供：
 
-- `sat_localStateBusCount()`：返回当前 hart 本地可见的 StateBus 数量。
-- `SAT_MBUS_CH(offset)`：把第 `offset` 条 MBus 映射到本地通道号。
-- `SAT_SBUS_CH(offset)`：把第 `offset` 条 SBus 映射到 satellite hart 的本地通道号。
+- `sat_BusCount`：当前 hart 可见的总 StateBus 数量。
+- `sat_MBusCount`: 当前 hart 可见的 MBus 数量
+- `sat_SBusCount`: 当前 hart 可见的 SBus 数量
+- `SAT_MBUS_CH(ch)`：把第 `ch` 条 MBus 映射到本地通道号。会过滤不合法的 `ch` 值。
+- `SAT_SBUS_CH(ch)`：把第 `ch` 条 SBus 映射到本地通道号。会过滤不合法的 `ch` 值。
 
 ## 头文件
 请在使用前包含相应的头文件：
@@ -47,8 +49,8 @@ void sat_send(int ch, uint16_t target, uint64_t payload);
 通过指定通道发送消息给目标节点。
 
 **参数:**
-- `ch`: 发送通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_localStateBusCount()`）。
-- `target`: 目标节点的 ID。
+- `ch`: 发送通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_BusCount`）。
+- `target`: 目标节点的 ID。（若发往主控站（站点0），则ch不能是SBus）
 - `payload`: 要发送的数据，低 48 bit 有效。
 
 ---
@@ -63,7 +65,7 @@ uint64_t sat_recv(int ch);
 从指定通道接收一条消息的有效载荷。
 
 **参数:**
-- `ch`: 接收通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_localStateBusCount()`）。
+- `ch`: 接收通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_BusCount`）。
 
 **返回值:**
 返回接收到的 48 bit 数据，右对其。读取后即出队。
@@ -80,7 +82,7 @@ uint64_t sat_receiveBufferCnt(int ch);
 获取指定接收通道的缓冲区内现存未读的消息数量。
 
 **参数:**
-- `ch`: 通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_localStateBusCount()`）。
+- `ch`: 通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_BusCount`）。
 
 **返回值:**
 返回该通道接收缓冲区中的消息计数。
@@ -97,7 +99,7 @@ uint64_t sat_sendBufferCnt(int ch);
 获取指定发送通道当前已经排队、尚未被 corvus 侧取走的消息数量。
 
 **参数:**
-- `ch`: 通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_localStateBusCount()`）。
+- `ch`: 通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_BusCount`）。
 
 **返回值:**
 返回该通道发送缓冲区中的消息计数。
@@ -114,7 +116,7 @@ void sat_clearBuffer(int ch);
 清空指定接收通道的缓冲区。该函数会循环拉取所有缓冲中的消息直到队列为空。
 
 **参数:**
-- `ch`: 通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_localStateBusCount()`）。
+- `ch`: 通道编号（必须小于当前 hart 本地可见的状态总线数目 `sat_BusCount`）。
 
 ---
 
@@ -165,9 +167,22 @@ rt_isr_handler_t sat_interrupt_install(rt_isr_handler_t handler, void* param);
 **返回值:**
 如果在重新安装时有旧版本中断回调，返回旧的中断处理函数指针。
 
+---
+
+### 10. `sat_dump_regs`
+**函数原型:**
+```c
+void sat_dump_regs(void);
+```
+
+**功能描述：**
+调试用，打印当前站点的卫星站的寄存器布局。
+
 ## 地址映射说明
 
-- 只读状态区大小为 `pow2ceil(1 + 2 * sat_localStateBusCount())` 个 64-bit 寄存器。
+- 只读状态区大小为 `pow2ceil(1 + 2 + 2 * sat_BusCount)` 个 64-bit 寄存器。
 - 偏移 0 为 `inSyncFlag`。
-- 偏移 1 到 `sat_localStateBusCount()` 为接收方向 `toCoreStateBusBuffer[i].count`。
-- 偏移 `1 + sat_localStateBusCount()` 到 `2 * sat_localStateBusCount()` 为发送方向 `fromCoreStateBusBuffer[i].count`。
+- 偏移 1 为当前站点可用的`MBus`数量。
+- 偏移 2 为当前站点可用的`SBus`数量
+- 偏移 3 .. `3+sat_BusCount-1` 为接收方向 `toCoreStateBusBuffer[i].count`。
+- 偏移 `3+sat_BusCount` .. `3+2 * sat_BusCount-1` 为发送方向 `fromCoreStateBusBuffer[i].count`。

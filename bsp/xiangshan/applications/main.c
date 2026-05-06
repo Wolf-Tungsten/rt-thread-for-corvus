@@ -12,10 +12,12 @@
 #include <riscv_io.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "drv_satellitestation.h"
 
 void test_sender(void);
 void test_receiver(void);
+void test_master(void);
 
 #define SAT_TEST_TARGET 2
 #define SAT_TEST_MSG_COUNT 4
@@ -34,29 +36,31 @@ static const uint64_t sat_test_sbus_payloads[SAT_TEST_MSG_COUNT] = {
     0xABCD0004ULL,
 };
 
-static void send_payloads(const char *bus_name, int ch, const uint64_t *payloads, size_t count) {
+static void send_payloads(const char *bus_name, uint64_t ch, const uint64_t *payloads, uint64_t count, uint16_t target) {
     for (size_t i = 0; i < count; ++i) {
-        rt_kprintf("Sending %s message %u on channel %d payload 0x%llX\n",
+        rt_kprintf("Sending %s message %zu on channel %lu payload 0x%11lX to %hu\n",
                    bus_name,
-                   (unsigned int)(i + 1),
+                   (i + 1),
                    ch,
-                   payloads[i]);
-        sat_send(ch, SAT_TEST_TARGET, payloads[i]);
+                   payloads[i],
+                   target);
+        sat_send(ch, target, payloads[i]);
     }
 }
 
-static void drain_channel(int ch) {
-    const char *bus_name = ch < nMBus ? "MBus" : "SBus";
+static bool drain_channel(uint64_t ch) {
+    const char *bus_name = ch < sat_MBusCount ? "MBus" : "SBus";
     uint64_t count = sat_receiveBufferCnt(ch);
 
     if (count == 0) {
-        return;
+        return false;
     }
 
-    rt_kprintf("channel %d (%s) cnt is %lld\n", ch, bus_name, count);
+    rt_kprintf("channel %lu (%s) cnt is %lu\n", ch, bus_name, count);
     while (sat_receiveBufferCnt(ch) > 0) {
-        rt_kprintf("payload is 0x%llX\n", sat_recv(ch));
+        rt_kprintf("payload is 0x%lX\n", sat_recv(ch));
     }
+    return true;
 }
 
 int main(void) {
@@ -67,29 +71,48 @@ int main(void) {
         test_sender();
     } else if (__raw_hartid() == 2) {
         test_receiver();
+    } else if (__raw_hartid() == 0) {
+        test_master();
     }
     rt_kprintf("\n****MAIN FINISH****\n");
     return 0;
 }
 
+void test_master(void){
+    rt_kprintf("MASTER\n");
+    sat_init();
+    rt_kprintf("Local StateBus count is %lu (MBus=%lu, SBus=%lu)\n",
+               sat_BusCount,
+               sat_MBusCount,
+               sat_SBusCount);
+    sat_dump_regs();
+    while(sat_receiveBufferCnt(SAT_MBUS_CH(0)) != SAT_TEST_MSG_COUNT){};
+    drain_channel(SAT_MBUS_CH(0));
+    rt_kprintf("DONE\n");
+    return;
+}
+
 void test_sender(void) {
     rt_kprintf("SENDER\n");
     sat_init();
-    rt_kprintf("Local StateBus count is %u (MBus=%u, SBus=%u)\n",
-               sat_localStateBusCount(),
-               nMBus,
-               nSBus);
-    send_payloads("MBus", SAT_MBUS_CH(0), sat_test_mbus_payloads, SAT_TEST_MSG_COUNT);
-    send_payloads("SBus", SAT_SBUS_CH(0), sat_test_sbus_payloads, SAT_TEST_MSG_COUNT);
+    rt_kprintf("Local StateBus count is %lu (MBus=%lu, SBus=%lu)\n",
+               sat_BusCount,
+               sat_MBusCount,
+               sat_SBusCount);
+    send_payloads("MBus", SAT_MBUS_CH(0), sat_test_mbus_payloads, SAT_TEST_MSG_COUNT,0);
+    send_payloads("MBus", SAT_MBUS_CH(0), sat_test_mbus_payloads, SAT_TEST_MSG_COUNT,SAT_TEST_TARGET);
+    send_payloads("SBus", SAT_SBUS_CH(0), sat_test_sbus_payloads, SAT_TEST_MSG_COUNT,SAT_TEST_TARGET);
+    //send_payloads("SBus", SAT_SBUS_CH(0), sat_test_sbus_payloads, SAT_TEST_MSG_COUNT,0); // This is not allowed
     rt_kprintf("DONE\n");
 }
 
 static void sat_recv_handler(int vector, void *param) {
+    (void)param;
     if(vector != satelliteIRQNum) {rt_kprintf("WHAT?\n"); return;}
     rt_kprintf("\nThis is reciver handler\n");
 
-    for (int ch = 0; ch < (int)sat_localStateBusCount(); ++ch) {
-        drain_channel(ch);
+    for (uint64_t ch = 0; ch < sat_BusCount; ++ch) {
+        if(drain_channel(ch)){break;}
     }
     rt_kprintf("DONE\n");
     return;
@@ -98,10 +121,10 @@ static void sat_recv_handler(int vector, void *param) {
 void test_receiver(void) {
     rt_kprintf("RECEIVER\n");
     sat_init();
-    rt_kprintf("Local StateBus count is %u (MBus=%u, SBus=%u)\n",
-               sat_localStateBusCount(),
-               nMBus,
-               nSBus);
+    rt_kprintf("Local StateBus count is %lu (MBus=%lu, SBus=%lu)\n",
+               sat_BusCount,
+               sat_MBusCount,
+               sat_SBusCount);
     sat_interrupt_install(sat_recv_handler, NULL);
     rt_thread_delay(30);
 }

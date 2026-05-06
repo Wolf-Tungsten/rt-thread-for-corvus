@@ -3,7 +3,8 @@ from building import *
 cwd     = GetCurrentDir()
 src = Glob('*.c') + Glob('*.cpp')
 CPPPATH = [cwd]
+LOCAL_CCFLAGS = ' -Wall -Wextra'
 
-group = DefineGroup('Vector', src, depend = [''], CPPPATH = CPPPATH)
+group = DefineGroup('Vector', src, depend = [''], CPPPATH = CPPPATH, LOCAL_CCFLAGS = LOCAL_CCFLAGS)
 
 Return('group')
